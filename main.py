@@ -162,9 +162,12 @@ def gen_expert_data():
     return expert_data_set
 
 
-if __name__ == '__main__':
+def compare_agreement():
+
+
+def main():
     w = World()
-    obs, done = w.reset()
+    _, _ = w.reset()
     expert_data = gen_expert_data()
     print(expert_data)
     agent_a = Agent()
@@ -175,5 +178,8 @@ if __name__ == '__main__':
     agent_b.train(expert_data)
     agent_b.print_action(w)
 
+
+if __name__ == '__main__':
+    main()
 
 
