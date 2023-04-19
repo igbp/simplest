@@ -4,11 +4,12 @@ import matplotlib.pyplot as plt
 
 class World():
     def __init__(self):
-        self.cols = 4
-        self.rows = 5
+        self.cols = 10
+        self.rows = 10
         self.start = (0, 0)
         self.end = (1, 0)
         self.valid_actions = ['N', 'S', 'E', 'W']
+
 
     def print_world(self):
         print(f'---------------')
@@ -52,32 +53,31 @@ class World():
             if self.current[1] == 0:
                 self.current = (self.current[0], self.current[1])
             else:
-                self.current = (self.current[0], self.current[1] -1)
+                self.current = (self.current[0], self.current[1]-1)
 
         if self.current == self.end:
             self.done = True
 
         return self.current, self.done
 
-class Agent():
+class Agent(torch.nn.Module):
     def __init__(self):
+        super(Agent, self).__init__()
         self.actions = ['N', 'S', 'E', 'W']
         self.actor = torch.nn.Sequential(
             torch.nn.Linear(2, 64),
             torch.nn.ReLU(),
             torch.nn.Linear(64, 64),
             torch.nn.ReLU(),
-            torch.nn.Linear(64, 4),
-            torch.nn.Softmax(dim=0))
+            torch.nn.Linear(64, 4))
+
+        self.apply(self._init_weights)
 
     def _init_weights(self, module):
-        if isinstance(module, torch.nn.Embedding):
+        if isinstance(module, torch.nn.Linear):
             module.weight.data.normal_(mean=0.0, std=1.0)
-            if module.padding_idx is not None:
-                module.weight.data[module.padding_idx].zero_()
-        elif isinstance(module, torch.nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
+            if module.bias is not None:
+                module.bias.data.zero_()
 
     def get_action(self, obs):
         obs = torch.tensor(obs, dtype=torch.float32)
@@ -97,7 +97,7 @@ class Agent():
         return torch.tensor(acs_vector, dtype=torch.float32)
 
     def train(self, expert_data):
-        optimizer = torch.optim.Adam(self.actor.parameters(), lr=0.01)
+        optimizer = torch.optim.Adam(self.actor.parameters(), lr=0.001)
         loss_fn = torch.nn.CrossEntropyLoss()
         loss_history = []
         for i in range(1000):
@@ -117,38 +117,63 @@ class Agent():
 
 
 
-    def print_action(self):
+    def print_action(self, world):
+        ncols = world.cols
+        nrows = world.rows
         print(f'------------------')
-        grid = [[0 for x in range(4)] for y in range(5)]
-        for i in range(5):
-            for j in range(4):
+        grid = [[0 for x in range(ncols)] for y in range(nrows)]
+        for i in range(nrows):
+            for j in range(ncols):
                 obs = torch.tensor([i, j], dtype=torch.float32)
                 action = self.actor(obs)
                 grid[i][j] = self.actions[action.argmax()]
 
-        [print(grid[row]) for row in range(5)]
-]
+        [print(grid[row]) for row in range(nrows)]
+
+
+def gen_expert_data():
+
+    w_expert = World()
+    expert_data_set = {}
+
+    for j in range(0, w_expert.cols):
+        expert_data_set[(0, j)] = 'W'
+
+    for i in range(0, w_expert.rows):
+        expert_data_set[(i, w_expert.cols - 1)] = 'S'
+
+    for j in reversed(range(0, w_expert.cols)):
+        expert_data_set[(w_expert.rows - 1, j)] = 'E'
+
+    for i in reversed(range(1, w_expert.rows)):
+        expert_data_set[(i, 0)] = 'N'
+
+    grid ={}
+    for i in range(0, w_expert.rows):
+        for j in range(0, w_expert.cols):
+            if (i, j) not in expert_data_set.keys():
+                grid[(i, j)] = 'X'
+            else:
+                grid[(i, j)] = expert_data_set[(i, j)]
+
+    grid_l = [[grid[(i, j)] for j in range(0, w_expert.cols)] for i in range(0, w_expert.rows)]
+    [print(grid_l[row]) for row in range(w_expert.rows)]
+
+    return expert_data_set
+
 
 if __name__ == '__main__':
     w = World()
     obs, done = w.reset()
-    expert_data = {(0,0):'W', (0,1):'W', (0,2):'W',  (0,3):'S',
-                   (1,3):'S', (2,3):'S', (3,3):'S',  (4,3):'E',
-                   (4,2):'E', (4,1):'E', (4,0):'N',
-                   (3,0):'N', (2,0):'N', (1,0):'N'}
+    expert_data = gen_expert_data()
+    print(expert_data)
+    agent_a = Agent()
+    agent_a.train(expert_data)
+    agent_a.print_action(w)
 
-
-    agent1 = Agent()
-    agent2 = Agent()
-    agent3 = Agent()
-
-    agent1.train(expert_data)
-    agent2.train(expert_data)
-    agent3.train(expert_data)
-
-    agent1.print_action()
-    agent2.print_action()
-    agent3.print_action()
+    agent_b = Agent()
+    agent_b.train(expert_data)
+    agent_b.print_action(w)
 
 
 
