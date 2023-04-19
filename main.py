@@ -1,11 +1,13 @@
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
 
-class world():
+class World():
     def __init__(self):
         self.cols = 4
-        self.rows = 3
+        self.rows = 5
         self.start = (0, 0)
-        self.end = (self.rows-1, self.cols-1)
+        self.end = (1, 0)
         self.valid_actions = ['N', 'S', 'E', 'W']
 
     def print_world(self):
@@ -57,27 +59,96 @@ class world():
 
         return self.current, self.done
 
+class Agent():
+    def __init__(self):
+        self.actions = ['N', 'S', 'E', 'W']
+        self.actor = torch.nn.Sequential(
+            torch.nn.Linear(2, 64),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 64),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, 4),
+            torch.nn.Softmax(dim=0))
+
+    def _init_weights(self, module):
+        if isinstance(module, torch.nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=1.0)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
+        elif isinstance(module, torch.nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+
+    def get_action(self, obs):
+        obs = torch.tensor(obs, dtype=torch.float32)
+        action = self.actor(obs)
+
+        return action
+
+    def print_weights(self):
+        print(self.actor[0].weight)
+        print(self.actor[0].bias)
+        print(self.actor[2].weight)
+        print(self.actor[2].bias)
+
+    def convert_action(self, action):
+        acs_vector = np.zeros(len(self.actions))
+        acs_vector[self.actions.index(action)] = 1
+        return torch.tensor(acs_vector, dtype=torch.float32)
+
+    def train(self, expert_data):
+        optimizer = torch.optim.Adam(self.actor.parameters(), lr=0.01)
+        loss_fn = torch.nn.CrossEntropyLoss()
+        loss_history = []
+        for i in range(1000):
+            loss = 0
+            for obs, action in expert_data.items():
+                optimizer.zero_grad()
+                action_vector = self.convert_action(action)
+                pred_action = self.get_action(obs)
+                loss += loss_fn(pred_action, action_vector)
+            loss_history.append(loss.detach().numpy())
+            loss.backward()
+            optimizer.step()
+
+        plt.plot(loss_history)
+        plt.show()
+        torch.save(self.actor, 'model.pth')
 
 
 
+    def print_action(self):
+        print(f'------------------')
+        grid = [[0 for x in range(4)] for y in range(5)]
+        for i in range(5):
+            for j in range(4):
+                obs = torch.tensor([i, j], dtype=torch.float32)
+                action = self.actor(obs)
+                grid[i][j] = self.actions[action.argmax()]
+
+        [print(grid[row]) for row in range(5)]
+]
 
 if __name__ == '__main__':
-    w = world()
+    w = World()
     obs, done = w.reset()
-    w.print_world()
+    expert_data = {(0,0):'W', (0,1):'W', (0,2):'W',  (0,3):'S',
+                   (1,3):'S', (2,3):'S', (3,3):'S',  (4,3):'E',
+                   (4,2):'E', (4,1):'E', (4,0):'N',
+                   (3,0):'N', (2,0):'N', (1,0):'N'}
 
-    obs, done = w.step('W')
-    w.print_world()
 
-    obs, done = w.step('W')
-    w.print_world()
+    agent1 = Agent()
+    agent2 = Agent()
+    agent3 = Agent()
 
-    obs, done = w.step('W')
-    w.print_world()
+    agent1.train(expert_data)
+    agent2.train(expert_data)
+    agent3.train(expert_data)
 
-    obs, done = w.step('S')
-    w.print_world()
+    agent1.print_action()
+    agent2.print_action()
+    agent3.print_action()
 
-    obs, done = w.step('S')
-    w.print_world()
+
 
